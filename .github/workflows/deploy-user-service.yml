@@ -1,0 +1,110 @@
+name: Deploy User Service
+
+# Start the workflow whenever code is pushed to the main branch in specified paths
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/user/**"
+      - ".github/workflows/deploy-user-service.yml"
+
+env:
+  PROJECT_ID: just-zoo-497104-f5
+  PROJECT_NUMBER: "338061725484"
+  REGION: asia-south1
+  WORKLOAD_IDENTITY_POOL: github-pool
+  WORKLOAD_IDENTITY_PROVIDER: github-provider
+  SERVICE_ACCOUNT: github-deployer
+  REPOSITORY: microservice-repo
+  IMAGE_NAME: user-image
+  SERVICE_NAME: user-service
+  CLOUD_SQL_INSTANCE: user-instance
+
+jobs:
+  ci-cd:
+    # GitHub creates a temporary Linux VM. Every workflow run gets a brand-new machine.
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Allows git clone repository
+      contents: read
+      # Allows GitHub to create an OIDC token.
+      # This token is used to authenticate with GCP via Workload Identity Federation.
+      # Without it Authenticate to Google Cloud would fail.
+      id-token: write
+    
+    steps:
+      # Downloads your repository onto the runner.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Exchange GitHub's OIDC token for a Google Cloud access token.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/${{ env.WORKLOAD_IDENTITY_POOL }}/providers/${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+      
+      # Install the Google Cloud CLI.
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+      
+      # Allow Docker to push images to Artifact Registry.
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      
+      # Build only this stage: FROM base AS test
+      - name: Build test image
+        run: |
+          docker build \
+            --target test \
+            --tag user-test:${{ github.sha }} \
+            --file services/user/Dockerfile \
+            services/user
+      
+      # Verify code formatting.
+      - name: Run Black
+        run: |
+          docker run --rm user-test:${{ github.sha }} \
+          black --check .
+      
+      # Static analysis of code
+      - name: Run Ruff
+        run: |
+          docker run --rm user-test:${{ github.sha }} \
+          ruff check . --select I
+      
+      # Execute automated tests.
+      - name: Run Pytest
+        run: |
+          docker run --rm user-test:${{ github.sha }} \
+          pytest -v
+      
+      # Build only this stage: FROM base AS prod
+      - name: Build Production Image
+        run: |
+          gcloud builds submit services/user \
+            --config services/user/cloudbuild-prod.yml \
+            --substitutions=_IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Tell cloud run to use production image and deploy it
+      - name: Deploy Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
+            --set-env-vars URL="${{ secrets.USER_URL }}" \
+            --set-env-vars ECHO="${{ secrets.ECHO }}" \
+            --set-env-vars POOL_SIZE="${{ secrets.POOL_SIZE }}" \
+            --set-env-vars DEBUG="${{ secrets.DEBUG }}" \
+            --set-env-vars FUTURE="${{ secrets.FUTURE }}" \
+            --set-env-vars MAX_OVERFLOW="${{ secrets.MAX_OVERFLOW }}" \
+            --set-env-vars POOL_RECYCLE="${{ secrets.POOL_RECYCLE }}" \
+            --set-env-vars POOL_TIMEOUT="${{ secrets.POOL_TIMEOUT }}" \
+            --set-env-vars USERNAME="${{ secrets.USER_APP_USERNAME }}" \
+            --set-env-vars PASSWORD="${{ secrets.USER_APP_PASSWORD }}"
