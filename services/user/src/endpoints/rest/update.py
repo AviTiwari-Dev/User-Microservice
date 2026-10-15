@@ -2,6 +2,7 @@
 Defines the endpoint for updating an existing user.
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, status
@@ -26,7 +27,7 @@ from ...routers.user import router as user_router
 async def patch_user(
     user_id: UUID,
     user: UserRequestUpdateBase,
-    manager: UserManagerProtocol = Depends(get_user_manager),
+    manager: Annotated[UserManagerProtocol, Depends(get_user_manager)]
 ) -> UserResponse:
     """
     Update an existing user.

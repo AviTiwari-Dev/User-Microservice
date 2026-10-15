@@ -2,6 +2,7 @@
 Defines the endpoint for deleting a user.
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Response, status
@@ -20,7 +21,7 @@ from ...routers.user import router as user_router
 )
 async def delete_user(
     user_id: UUID,
-    manager: UserManagerProtocol = Depends(get_user_manager),
+    manager: Annotated[UserManagerProtocol, Depends(get_user_manager)]
 ) -> Response:
     """
     Soft delete an existing user.

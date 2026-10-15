@@ -2,6 +2,7 @@
 Defines the endpoint for retrieving a user.
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, status
@@ -22,7 +23,7 @@ from ...routers.user import router as user_router
 )
 async def get_user(
     user_id: UUID,
-    manager: UserManagerProtocol = Depends(get_user_manager),
+    manager: Annotated[UserManagerProtocol, Depends(get_user_manager)]
 ) -> UserResponse:
     """
     Retrieve an active user by its unique identifier.

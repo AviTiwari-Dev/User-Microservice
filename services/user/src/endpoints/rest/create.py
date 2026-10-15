@@ -2,6 +2,8 @@
 Defines the endpoint for creating a user.
 """
 
+from typing import Annotated
+
 from fastapi import Depends, status
 
 from ...dependencies.get_user_manager import get_user_manager
@@ -21,7 +23,7 @@ from ...routers.user import router as user_router
 )
 async def post_user(
     user: UserRequestBase,
-    manager: UserManagerProtocol = Depends(get_user_manager),
+    manager: Annotated[UserManagerProtocol, Depends(get_user_manager)]
 ) -> UserResponse:
     """
     Create a new user.

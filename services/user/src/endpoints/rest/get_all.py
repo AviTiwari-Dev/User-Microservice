@@ -2,6 +2,7 @@
 Defines the endpoint for retrieving a paginated list of users.
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Query, status
@@ -21,6 +22,7 @@ from ...routers.user import router as user_router
     status_code=status.HTTP_200_OK,
 )
 async def get_users(
+    manager: Annotated[UserManagerProtocol, Depends(get_user_manager)],
     cursor: UUID | None = Query(
         default=None,
         description="Cursor identifying the last user returned by the previous page.",
@@ -31,7 +33,6 @@ async def get_users(
         le=100,
         description="Maximum number of users to return.",
     ),
-    manager: UserManagerProtocol = Depends(get_user_manager),
 ) -> list[UserResponse]:
     """
     Retrieve a paginated list of active users.
